@@ -1,0 +1,20 @@
+{
+  "name": "@arquitectura/shared",
+  "version": "0.0.1",
+  "description": "Contratos y utilidades compartidas para la arquitectura híbrida Tour-Reserva.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.0"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.0"
+  }
+}

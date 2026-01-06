@@ -1,0 +1,27 @@
+{
+  "name": "arquitectura-hibrida",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Monorepo para arquitectura híbrida Tour↔Reserva con resiliencia basada en consumidor idempotente.",
+  "workspaces": [
+    "api-gateway",
+    "micro-tour",
+    "micro-reserva",
+    "shared"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "build": "npm run build --workspaces",
+    "build:services": "npm run build --workspace api-gateway && npm run build --workspace micro-tour && npm run build --workspace micro-reserva",
+    "start:gateway": "npm run start:dev --workspace api-gateway",
+    "start:tour": "npm run start:dev --workspace micro-tour",
+    "start:reserva": "npm run start:dev --workspace micro-reserva",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "ioredis-mock": "^5.8.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5"
+  }
+}

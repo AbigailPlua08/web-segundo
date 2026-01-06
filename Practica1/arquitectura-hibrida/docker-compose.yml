@@ -1,0 +1,114 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: arquitectura_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: arquitectura_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tour-db:
+    image: postgres:16-alpine
+    container_name: arquitectura_tour_db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: tours
+      POSTGRES_USER: tour_admin
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - tour-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d tours -U tour_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  reserva-db:
+    image: postgres:16-alpine
+    container_name: arquitectura_reserva_db
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: reservas
+      POSTGRES_USER: reserva_admin
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - reserva-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d reservas -U reserva_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  micro-tour:
+    build:
+      context: .
+      dockerfile: ./micro-tour/Dockerfile
+    container_name: arquitectura_micro_tour
+    env_file: ./micro-tour/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      tour-db:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+
+  micro-reserva:
+    build:
+      context: .
+      dockerfile: ./micro-reserva/Dockerfile
+    container_name: arquitectura_micro_reserva
+    env_file: ./micro-reserva/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      reserva-db:
+        condition: service_healthy
+    ports:
+      - "3002:3002"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    container_name: arquitectura_api_gateway
+    environment:
+      PORT: 3000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      TOUR_QUEUE: tour.command.queue
+      RESERVA_QUEUE: reserva.command.queue
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      micro-tour:
+        condition: service_started
+      micro-reserva:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  tour-db-data:
+  reserva-db-data:

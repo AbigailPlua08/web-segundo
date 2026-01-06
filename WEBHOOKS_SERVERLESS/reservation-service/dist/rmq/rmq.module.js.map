@@ -1,0 +1,1 @@
+{"version":3,"file":"rmq.module.js","sourceRoot":"","sources":["../../src/rmq/rmq.module.ts"],"names":[],"mappings":";;;;;;;;;AAAA,2CAAwC;AACxC,yDAAqD;AAM9C,IAAM,SAAS,GAAf,MAAM,SAAS;CAAG,CAAA;AAAZ,SAAS;IAJrB,IAAA,eAAM,EAAC;QACN,SAAS,EAAE,CAAC,kCAAe,CAAC;QAC5B,OAAO,EAAE,CAAC,kCAAe,CAAC;KAC3B,CAAC;GACW,SAAS,CAAG;AAAZ,8BAAS"}
