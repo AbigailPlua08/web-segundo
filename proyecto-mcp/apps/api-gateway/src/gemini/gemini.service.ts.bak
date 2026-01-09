@@ -1,0 +1,288 @@
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { McpClient } from '../mcp-client/mcp-client.service';
+
+/**
+ * Servicio de integración con Gemini AI
+ * Utiliza Function Calling para decidir qué Tools ejecutar
+ */
+@Injectable()
+export class GeminiService implements OnModuleInit {
+  private genAI: GoogleGenerativeAI;
+  private model: any;
+  private tools: any[] = [];
+
+  constructor(private readonly mcpClient: McpClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY no está configurada en el archivo .env');
+    }
+
+    this.genAI = new GoogleGenerativeAI(apiKey);
+  }
+
+  async onModuleInit() {
+    // Cargar herramientas disponibles del MCP Server
+    await this.loadTools();
+    
+    // Configurar el modelo con las herramientas
+    this.model = this.genAI.getGenerativeModel({
+      model: 'gemini-1.5-pro',
+      tools: [{ functionDeclarations: this.tools }],
+    });
+
+    console.log(`✓ Gemini configurado con ${this.tools.length} herramientas`);
+  }
+
+  /**
+   * Carga las herramientas desde el MCP Server y las convierte al formato de Gemini
+   */
+  private async loadTools() {
+    const mcpTools = await this.mcpClient.listTools();
+
+    this.tools = mcpTools.map((tool: any) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: this.convertSchemaToGemini(tool.inputSchema),
+    }));
+  }
+
+  /**
+   * Convierte el JSON Schema de MCP al formato esperado por Gemini
+   */
+  private convertSchemaToGemini(schema: any) {
+    const properties: any = {};
+
+    for (const [key, value] of Object.entries(schema.properties)) {
+      const prop: any = value;
+      properties[key] = {
+        type: this.mapTypeToGemini(prop.type),
+        description: prop.description,
+      };
+
+      if (prop.enum) {
+        properties[key].enum = prop.enum;
+      }
+    }
+
+    return {
+      type: SchemaType.OBJECT,
+      properties,
+      required: schema.required || [],
+    };
+  }
+
+  /**
+   * Mapea tipos de JSON Schema a tipos de Gemini
+   */
+  private mapTypeToGemini(type: string): SchemaType {
+    const typeMap: Record<string, SchemaType> = {
+      string: SchemaType.STRING,
+      number: SchemaType.NUMBER,
+      integer: SchemaType.INTEGER,
+      boolean: SchemaType.BOOLEAN,
+      array: SchemaType.ARRAY,
+      object: SchemaType.OBJECT,
+    };
+
+    return typeMap[type] || SchemaType.STRING;
+  }
+
+  /**
+   * Procesa una consulta del usuario y ejecuta los Tools necesarios
+   * VERSION SIMULADA para demostración del taller
+   */
+  async processQuery(userPrompt: string) {
+    const executedTools: any[] = [];
+    let iterations = 0;
+    let finalResponse = '';
+
+    // Simular el razonamiento de la IA basado en patrones
+    const toolsToExecute = this.determineToolsFromPrompt(userPrompt);
+
+    // Ejecutar los tools determinados
+    for (const toolExecution of toolsToExecute) {
+      iterations++;
+      console.log(`🔧 Ejecutando: ${toolExecution.name}`, toolExecution.args);
+
+      try {
+        const toolResult = await this.mcpClient.callTool(toolExecution.name, toolExecution.args);
+        
+        executedTools.push({
+          tool: toolExecution.name,
+          arguments: toolExecution.args,
+          result: toolResult,
+            },
+          });
+        } catch (error: any) {
+          console.error(`Error ejecutando ${call.name}:`, error.message);
+          
+          functionResponses.push({
+            functionResponse: {
+              name: call.name,
+              response: {
+                success: false,
+                error: error.message,
+              },
+            },
+          });
+        });
+      } catch (error) {
+        console.error(`❌ Error ejecutando ${toolExecution.name}:`, error.message);
+        executedTools.push({
+          tool: toolExecution.name,
+          arguments: toolExecution.args,
+          error: error.message,
+        });
+      }
+    }
+
+    // Generar respuesta final basada en los resultados
+    finalResponse = this.generateResponseFromResults(userPrompt, executedTools);
+
+    return {
+      userPrompt,
+      response: finalResponse,
+      toolsExecuted: executedTools,
+      iterations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Determina qué tools ejecutar basándose en el mensaje del usuario
+   * Simula el razonamiento de la IA
+   */
+  private determineToolsFromPrompt(prompt: string): Array<{name: string, args: any}> {
+    const lowerPrompt = prompt.toLowerCase();
+    const toolsToExecute: Array<{name: string, args: any}> = [];
+
+    // Extraer información del prompt
+    const tourNameMatch = prompt.match(/(?:tour|viaje|destino)\s+(?:a|al|de|del)?\s+([A-Za-zÁ-ÿ\s]+?)(?:\s+para|\s+de|\?|$|\.)/i);
+    const numPassengersMatch = prompt.match(/(\d+)\s+persona|pasajero/i);
+    const emailMatch = prompt.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    const phoneMatch = prompt.match(/(\d{10})/);
+    const nameMatch = prompt.match(/(?:nombre|soy|me llamo)\s+(?:es\s+)?([A-Za-zÁ-ÿ\s]+?)(?:\s*,|\s+email|\s+mi)/i);
+
+    // Caso 1: Reservar tour (END-TO-END)
+    if (lowerPrompt.includes('reserv') || lowerPrompt.includes('quiero') && numPassengersMatch) {
+      const tourQuery = tourNameMatch ? tourNameMatch[1].trim() : 'Cartagena';
+      const numPasajeros = numPassengersMatch ? parseInt(numPassengersMatch[1]) : 2;
+      
+      // Paso 1: Buscar tour
+      toolsToExecute.push({
+        name: 'buscar_tour',
+        args: { query: tourQuery }
+      });
+      
+      // Paso 2: Validar disponibilidad (asumimos tourId 1 del resultado)
+      toolsToExecute.push({
+        name: 'validar_disponibilidad',
+        args: { tourId: 1, numeroPasajeros: numPasajeros }
+      });
+      
+      // Paso 3: Crear reserva si tiene todos los datos
+      if (emailMatch && phoneMatch && nameMatch) {
+        toolsToExecute.push({
+          name: 'crear_reserva',
+          args: {
+            tourId: 1,
+            nombreCliente: nameMatch[1].trim(),
+            emailCliente: emailMatch[1],
+            telefonoCliente: phoneMatch[1],
+            numeroPasajeros: numPasajeros
+          }
+        });
+      }
+    }
+    // Caso 2: Validar disponibilidad
+    else if (lowerPrompt.includes('espacio') || lowerPrompt.includes('disponib') || lowerPrompt.includes('cupos')) {
+      const numPasajeros = numPassengersMatch ? parseInt(numPassengersMatch[1]) : 5;
+      const tourQuery = tourNameMatch ? tourNameMatch[1].trim() : 'Cartagena';
+      
+      toolsToExecute.push({
+        name: 'buscar_tour',
+        args: { query: tourQuery }
+      });
+      
+      toolsToExecute.push({
+        name: 'validar_disponibilidad',
+        args: { tourId: 1, numeroPasajeros: numPasajeros }
+      });
+    }
+    // Caso 3: Buscar tours específicos
+    else if (lowerPrompt.includes('busca') || lowerPrompt.includes('muestra') || lowerPrompt.includes('tours') || lowerPrompt.includes('disponible')) {
+      const query = tourNameMatch ? tourNameMatch[1].trim() : '';
+      toolsToExecute.push({
+        name: 'buscar_tour',
+        args: { query }
+      });
+    }
+
+    return toolsToExecute;
+  }
+
+  /**
+   * Genera una respuesta en lenguaje natural basada en los resultados
+   */
+  private generateResponseFromResults(prompt: string, executedTools: any[]): string {
+    if (executedTools.length === 0) {
+      return 'No pude procesar tu solicitud. ¿Podrías reformularla?';
+    }
+
+    const lastTool = executedTools[executedTools.length - 1];
+    
+    try {
+      // Si se creó una reserva exitosamente
+      if (lastTool.tool === 'crear_reserva' && lastTool.result?.content) {
+        const content = JSON.parse(lastTool.result.content[0].text);
+        if (content.success) {
+          return `✅ ¡Reserva creada exitosamente! ${content.message}\n\n📋 Detalles:\n- Tour: ${content.data.nombreTour}\n- Cliente: ${content.data.nombreCliente}\n- Pasajeros: ${content.data.numeroPasajeros}\n- Total a pagar: $${content.data.montoTotal}\n- Código de reserva: ${content.data.codigoReserva}`;
+        }
+      }
+      
+      // Si se validó disponibilidad
+      if (lastTool.tool === 'validar_disponibilidad' && lastTool.result?.content) {
+        const content = JSON.parse(lastTool.result.content[0].text);
+        if (content.disponible) {
+          return `✅ ${content.message}\n\nEl monto estimado sería: $${content.data.montoEstimado}`;
+        } else {
+          return `❌ ${content.message}`;
+        }
+      }
+      
+      // Si se buscaron tours
+      if (lastTool.tool === 'buscar_tour' && lastTool.result?.content) {
+        const content = JSON.parse(lastTool.result.content[0].text);
+        if (content.success && content.data.length > 0) {
+          let response = `Encontré ${content.data.length} tour(s) disponible(s):\n\n`;
+          content.data.forEach((tour: any, index: number) => {
+            response += `${index + 1}. **${tour.nombre}**\n`;
+            response += `   📍 Destino: ${tour.destino}\n`;
+            response += `   💰 Precio: $${tour.precio}\n`;
+            response += `   👥 Cupos disponibles: ${tour.cuposDisponibles}\n`;
+            response += `   📅 Salida: ${tour.fechaSalida} / Retorno: ${tour.fechaRetorno}\n\n`;
+          });
+          return response;
+        } else {
+          return 'No encontré tours con esos criterios. ¿Quieres ver todos los disponibles?';
+        }
+      }
+    } catch (error) {
+      return `Procesé tu solicitud pero hubo un problema al formatear la respuesta: ${lastTool.result}`;
+    }
+
+    return 'Solicitud procesada exitosamente.';
+  }
+
+  /**
+   * Obtiene información sobre las herramientas disponibles
+   */
+  getAvailableTools() {
+    return this.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    }));
+  }
+}
